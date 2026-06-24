@@ -11,187 +11,260 @@
             box-sizing: border-box;
         }
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             overflow: hidden;
         }
-        .header {
-            background: rgba(255,255,255,0.95);
-            padding: 15px;
-            text-align: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        .header h1 {
-            color: #333;
-            font-size: 24px;
-            margin-bottom: 5px;
-        }
-        .header p {
-            color: #666;
-            font-size: 14px;
-        }
-        #viewer-container {
-            width: 100%;
-            height: calc(100vh - 80px);
+        #container {
+            width: 100vw;
+            height: 100vh;
             position: relative;
         }
-        #viewer {
-            width: 100%;
-            height: 100%;
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.95);
+            padding: 15px 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            z-index: 100;
+            text-align: center;
         }
-        .loading {
+        #info h1 {
+            font-size: 24px;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        #info p {
+            font-size: 14px;
+            color: #666;
+        }
+        #loading {
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
             background: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.3);
             text-align: center;
+            z-index: 200;
         }
         .spinner {
             border: 4px solid #f3f3f3;
             border-top: 4px solid #667eea;
             border-radius: 50%;
-            width: 40px;
-            height: 40px;
+            width: 50px;
+            height: 50px;
             animation: spin 1s linear infinite;
-            margin: 0 auto 15px;
+            margin: 0 auto 20px;
         }
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        .controls {
+        #controls {
             position: absolute;
             bottom: 20px;
             left: 50%;
             transform: translateX(-50%);
-            background: rgba(255,255,255,0.9);
-            padding: 10px 20px;
-            border-radius: 25px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 15px;
+            border-radius: 10px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-            font-size: 12px;
-            color: #666;
+            z-index: 100;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 0 5px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #764ba2;
         }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>🏗️ Visualizador 3D - Projeto Estrutural</h1>
-        <p>Navegue pelo modelo usando o mouse | Mobile: toque e arraste</p>
-    </div>
+    <div id="container"></div>
     
-    <div id="viewer-container">
-        <div class="loading" id="loading">
-            <div class="spinner"></div>
-            <p>Carregando modelo 3D...</p>
-        </div>
-        <canvas id="viewer"></canvas>
-        <div class="controls">
-            🖱️ Rotacionar: Botão esquerdo | 🔍 Zoom: Scroll | 📐 Pan: Botão direito
-        </div>
+    <div id="info">
+        <h1>🏗️ Visualizador 3D - Projeto Estrutural</h1>
+        <p>Navegue pelo modelo usando o mouse | Molde: toque e arraste</p>
     </div>
+
+    <div id="loading">
+        <div class="spinner"></div>
+        <p>Carregando modelo 3D...</p>
+    </div>
+
+    <div id="controls">
+        <button onclick="resetCamera()">🔄 Resetar Visão</button>
+        <button onclick="toggleWireframe()">📐 Wireframe</button>
+        <button onclick="zoomIn()">🔍 Zoom +</button>
+        <button onclick="zoomOut()">🔍 Zoom -</button>
+    </div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
 
     <script type="module">
-        import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
-        import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js';
-        import { IFCLoader } from 'https://cdn.jsdelivr.net/npm/web-ifc-three@0.0.122/IFCLoader.js';
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { IFCLoader } from 'https://cdn.jsdelivr.net/npm/web-ifc-three@0.0.124/IFCLoader.js';
 
-        // Configuração da cena
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0xf0f0f0);
+        let scene, camera, renderer, controls, model;
+        let wireframeMode = false;
 
-        // Câmera
-        const camera = new THREE.PerspectiveCamera(
-            75,
-            window.innerWidth / window.innerHeight,
-            0.1,
-            10000
-        );
-        camera.position.set(50, 50, 50);
+        function init() {
+            // Cena
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xf0f0f0);
 
-        // Renderizador
-        const canvas = document.getElementById('viewer');
-        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight - 80);
-        renderer.setPixelRatio(window.devicePixelRatio);
+            // Câmera
+            camera = new THREE.PerspectiveCamera(
+                75,
+                window.innerWidth / window.innerHeight,
+                0.1,
+                10000
+            );
+            camera.position.set(50, 50, 50);
 
-        // Controles
-        const controls = new OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true;
-        controls.dampingFactor = 0.05;
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            document.getElementById('container').appendChild(renderer.domElement);
 
-        // Iluminação
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-        scene.add(ambientLight);
+            // Controles
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
 
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        directionalLight.position.set(100, 100, 100);
-        scene.add(directionalLight);
+            // Iluminação
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
 
-        // Grid
-        const gridHelper = new THREE.GridHelper(200, 50, 0x888888, 0xcccccc);
-        scene.add(gridHelper);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(100, 100, 100);
+            scene.add(directionalLight);
 
-        // Carregar IFC
-        const ifcLoader = new IFCLoader();
-        ifcLoader.ifcManager.setWasmPath('https://cdn.jsdelivr.net/npm/web-ifc@0.0.43/');
+            // Grid
+            const gridHelper = new THREE.GridHelper(200, 50, 0x888888, 0xcccccc);
+            scene.add(gridHelper);
 
-        ifcLoader.load(
-            '3D%20ESTRUTURAL.IFC',
-            (ifcModel) => {
-                scene.add(ifcModel);
-                
-                // Centralizar modelo
-                const box = new THREE.Box3().setFromObject(ifcModel);
-                const center = box.getCenter(new THREE.Vector3());
-                const size = box.getSize(new THREE.Vector3());
-                
-                ifcModel.position.x -= center.x;
-                ifcModel.position.y -= center.y;
-                ifcModel.position.z -= center.z;
-                
-                // Ajustar câmera
-                const maxDim = Math.max(size.x, size.y, size.z);
-                camera.position.set(maxDim, maxDim, maxDim);
-                controls.target.set(0, size.y / 2, 0);
-                controls.update();
-                
-                // Esconder loading
-                document.getElementById('loading').style.display = 'none';
-            },
-            (progress) => {
-                const percent = (progress.loaded / progress.total) * 100;
-                document.getElementById('loading').innerHTML = `
-                    <div class="spinner"></div>
-                    <p>Carregando modelo 3D... ${Math.round(percent)}%</p>
-                `;
-            },
-            (error) => {
-                console.error('Erro ao carregar IFC:', error);
-                document.getElementById('loading').innerHTML = `
-                    <p style="color: red;">❌ Erro ao carregar modelo</p>
-                    <p style="font-size: 12px; margin-top: 10px;">Verifique se o arquivo está no repositório</p>
-                `;
-            }
-        );
+            // Carregar IFC
+            loadIFC();
 
-        // Animação
+            // Resize
+            window.addEventListener('resize', onWindowResize);
+
+            // Animação
+            animate();
+        }
+
+        function loadIFC() {
+            const loader = new IFCLoader();
+            loader.ifcManager.setWasmPath('https://cdn.jsdelivr.net/npm/web-ifc@0.0.44/');
+
+            loader.load(
+                '3D ESTRUTURAL.ifc',
+                (ifcModel) => {
+                    model = ifcModel;
+                    scene.add(model);
+                    
+                    // Centralizar modelo
+                    const box = new THREE.Box3().setFromObject(model);
+                    const center = box.getCenter(new THREE.Vector3());
+                    const size = box.getSize(new THREE.Vector3());
+                    
+                    model.position.x = -center.x;
+                    model.position.y = -center.y;
+                    model.position.z = -center.z;
+                    
+                    // Ajustar câmera
+                    const maxDim = Math.max(size.x, size.y, size.z);
+                    const fov = camera.fov * (Math.PI / 180);
+                    let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
+                    cameraZ *= 1.5;
+                    camera.position.set(cameraZ, cameraZ, cameraZ);
+                    camera.lookAt(0, 0, 0);
+                    controls.target.set(0, 0, 0);
+                    controls.update();
+
+                    // Remover loading
+                    document.getElementById('loading').style.display = 'none';
+                    console.log('✅ Modelo IFC carregado com sucesso!');
+                },
+                (progress) => {
+                    const percent = (progress.loaded / progress.total) * 100;
+                    console.log(`Carregando: ${percent.toFixed(2)}%`);
+                },
+                (error) => {
+                    console.error('❌ Erro ao carregar IFC:', error);
+                    document.getElementById('loading').innerHTML = 
+                        '<p style="color: red;">❌ Erro ao carregar modelo!
+Verifique o arquivo IFC.</p>';
+                }
+            );
+        }
+
         function animate() {
             requestAnimationFrame(animate);
             controls.update();
             renderer.render(scene, camera);
         }
-        animate();
 
-        // Responsivo
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / (window.innerHeight - 80);
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight - 80);
-        });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // Funções de controle
+        window.resetCamera = function() {
+            camera.position.set(50, 50, 50);
+            controls.target.set(0, 0, 0);
+            controls.update();
+        };
+
+        window.toggleWireframe = function() {
+            if (model) {
+                wireframeMode = !wireframeMode;
+                model.traverse((child) => {
+                    if (child.isMesh) {
+                        child.material.wireframe = wireframeMode;
+                    }
+                });
+            }
+        };
+
+        window.zoomIn = function() {
+            camera.position.multiplyScalar(0.8);
+            controls.update();
+        };
+
+        window.zoomOut = function() {
+            camera.position.multiplyScalar(1.2);
+            controls.update();
+        };
+
+        // Iniciar
+        init();
     </script>
 </body>
 </html>
