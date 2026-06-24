@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visualizador 3D - Projeto Estrutural</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            overflow: hidden;
+        }
+        .header {
+            background: rgba(255,255,255,0.95);
+            padding: 15px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header h1 {
+            color: #333;
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+        .header p {
+            color: #666;
+            font-size: 14px;
+        }
+        #viewer-container {
+            width: 100%;
+            height: calc(100vh - 80px);
+            position: relative;
+        }
+        #viewer {
+            width: 100%;
+            height: 100%;
+        }
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+            text-align: center;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255,255,255,0.9);
+            padding: 10px 20px;
+            border-radius: 25px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            font-size: 12px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🏗️ Visualizador 3D - Projeto Estrutural</h1>
+        <p>Navegue pelo modelo usando o mouse | Mobile: toque e arraste</p>
+    </div>
+    
+    <div id="viewer-container">
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Carregando modelo 3D...</p>
+        </div>
+        <canvas id="viewer"></canvas>
+        <div class="controls">
+            🖱️ Rotacionar: Botão esquerdo | 🔍 Zoom: Scroll | 📐 Pan: Botão direito
+        </div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+        import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+        import { IFCLoader } from 'https://cdn.jsdelivr.net/npm/web-ifc-three@0.0.122/IFCLoader.js';
+
+        // Configuração da cena
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xf0f0f0);
+
+        // Câmera
+        const camera = new THREE.PerspectiveCamera(
+            75,
+            window.innerWidth / window.innerHeight,
+            0.1,
+            10000
+        );
+        camera.position.set(50, 50, 50);
+
+        // Renderizador
+        const canvas = document.getElementById('viewer');
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight - 80);
+        renderer.setPixelRatio(window.devicePixelRatio);
+
+        // Controles
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+
+        // Iluminação
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(100, 100, 100);
+        scene.add(directionalLight);
+
+        // Grid
+        const gridHelper = new THREE.GridHelper(200, 50, 0x888888, 0xcccccc);
+        scene.add(gridHelper);
+
+        // Carregar IFC
+        const ifcLoader = new IFCLoader();
+        ifcLoader.ifcManager.setWasmPath('https://cdn.jsdelivr.net/npm/web-ifc@0.0.43/');
+
+        ifcLoader.load(
+            '3D%20ESTRUTURAL.IFC',
+            (ifcModel) => {
+                scene.add(ifcModel);
+                
+                // Centralizar modelo
+                const box = new THREE.Box3().setFromObject(ifcModel);
+                const center = box.getCenter(new THREE.Vector3());
+                const size = box.getSize(new THREE.Vector3());
+                
+                ifcModel.position.x -= center.x;
+                ifcModel.position.y -= center.y;
+                ifcModel.position.z -= center.z;
+                
+                // Ajustar câmera
+                const maxDim = Math.max(size.x, size.y, size.z);
+                camera.position.set(maxDim, maxDim, maxDim);
+                controls.target.set(0, size.y / 2, 0);
+                controls.update();
+                
+                // Esconder loading
+                document.getElementById('loading').style.display = 'none';
+            },
+            (progress) => {
+                const percent = (progress.loaded / progress.total) * 100;
+                document.getElementById('loading').innerHTML = `
+                    <div class="spinner"></div>
+                    <p>Carregando modelo 3D... ${Math.round(percent)}%</p>
+                `;
+            },
+            (error) => {
+                console.error('Erro ao carregar IFC:', error);
+                document.getElementById('loading').innerHTML = `
+                    <p style="color: red;">❌ Erro ao carregar modelo</p>
+                    <p style="font-size: 12px; margin-top: 10px;">Verifique se o arquivo está no repositório</p>
+                `;
+            }
+        );
+
+        // Animação
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // Responsivo
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / (window.innerHeight - 80);
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight - 80);
+        });
+    </script>
+</body>
+</html>
